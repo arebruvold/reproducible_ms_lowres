@@ -2,7 +2,7 @@
 
 ## packages and functions ----
 
-source("r/lrms_analysis_scripts.R")
+source("r/srm_analysis_scripts.R")
 
 
 ## Processing ----
