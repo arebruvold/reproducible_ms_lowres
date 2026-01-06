@@ -5,6 +5,31 @@ library(janitor)
 library(fuzzyjoin)
 library(tictoc)
 
+
+ms_metadataer <- function(ms_data) {
+  # Get list of mzML files in the directory
+  ms_files <- list.files(ms_data, pattern = "\\.mzML$", full.names = TRUE)
+
+  # Check if any files were found
+  if (length(ms_files) == 0) {
+    stop("No mzML files found in directory: ", ms_data)
+  }
+
+  # Open the first mzML file (suppress warnings from openMSfile)
+  ms_file <- suppressWarnings(openMSfile(ms_files[[1]]))
+
+  # Get instrument and run info (suppress warnings from these functions)
+  instrument <- suppressWarnings(instrumentInfo(ms_file))
+  run <- suppressWarnings(runInfo(ms_file))
+
+  # Return as a list instead of printing
+  list(
+    instrument = instrument,
+    run = run
+  )
+}
+
+
 process_srm_batch <- function(input, mrm_info = NULL, mz_tolerance = 0.1) {
   # Load RColorBrewer for color palette
   library(RColorBrewer)
