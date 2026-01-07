@@ -1,0 +1,159 @@
+---
+title: "GC MRM Contrast Report"
+format: 
+  html:
+    page-layout: full
+    toc: true
+    code-fold: true
+    self-contained: true
+editor: source
+---
+
+## Setup and Processing
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(tictoc)
+library(viridis)
+
+# --- 1. Load Functions ---
+# Adjust path if necessary to match your project structure
+source("r/srm_analysis_scripts.R")
+
+# --- 2. Configuration ---
+ms_data_path <- "ms_data/"
+# Using relative path from snippet
+mrm_file_path <- "files/251103_mrms_rev5.csv"
+```
+
+
+
+```{r}
+#| label: process-data
+#| message: false
+#| warning: false
+#| cache: true
+
+# --- 3. Process Data ---
+# Load metadata if function exists (from sourced script)
+if(exists("ms_metadataer")) {
+  ms_metadataer(ms_data_path)
+}
+
+
+# Create dataframe with spectral and chromatographic info
+sample_spectrums <- process_srm_batch(
+  input = ms_data_path,
+  mrm_info = read_csv(mrm_file_path, show_col_types = FALSE)
+) %>%
+  # Append sample metadata from file name
+  mutate(
+    # Extract temperature (number before c_)
+    temperature = as.numeric(str_extract(file_name, "\\d+(?=c_)")),
+    # Extract ce (number before ce)
+    ce = as.numeric(str_extract(file_name, "\\d+(?=ce)")),
+    # Create sample_name combining temperature and energy
+    sample_name = paste0(temperature, "C_", ce, "eV"),
+    # Convert to ordered factor
+    sample_name = factor(
+      sample_name,
+      levels = paste0(
+        rep(c(200, 285), each = 4), 
+        "C_",
+        rep(c(5, 23, 42, 60), times = 2), 
+        "eV"
+      ),
+      ordered = TRUE
+    )
+  )
+```
+
+
+
+```{r}
+#| label: generate-plots
+#| results: asis
+#| fig-width: 10
+#| fig-height: 8
+#| warning: false
+#| message: false
+
+# 1. Summarize Data for Heatmaps (Chromatograms use raw sample_spectrums)
+heatmap_data <- sample_spectrums %>%
+  group_by(compound_name, transition, ce, temperature) %>%
+  summarise(peak_max = log10(max(intensity, na.rm = TRUE)), .groups = "drop")
+
+unique_compounds <- unique(heatmap_data$compound_name)
+
+# 2. Begin Tabset Panel
+cat("::: {.panel-tabset}\n\n")
+
+# 3. Loop through each compound
+for (cmp in unique_compounds) {
+  
+  # --- Tab Header ---
+  cat("## ", cmp, "\n\n")
+  
+  # --- Plot 1: Chromatogram (Line Plot) ---
+  p_chrom <- sample_spectrums %>%
+    filter(compound_name == cmp) %>%
+    ggplot(aes(rtime, intensity, color = sample_name)) +
+    geom_line(alpha = 0.7, linewidth = 0.5) +
+     scale_colour_viridis_d()
+    labs(
+      title = paste("Chromatograms:", cmp),
+      x = "Retention Time (seconds)",
+      y = "Intensity",
+      color = "Sample"
+    ) +
+    theme_bw() +
+    theme(
+      strip.text = element_text(size = 10, face = "bold"),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "bottom",
+      legend.text = element_text(size = 9),
+      plot.title = element_text(size = 16, face = "bold"),
+      plot.subtitle = element_text(size = 12)
+    ) +
+    guides(
+      color = guide_legend(override.aes = list(alpha = 1, linewidth = 2))
+    ) +
+    facet_wrap(~transition, scales = "free_y") # Added scales=free_y for better visibility
+
+  print(p_chrom)
+  cat("\n\n") # Spacing between plots
+
+  # --- Plot 2: Optimization Heatmap ---
+  p_heat <- heatmap_data %>%
+    filter(compound_name == cmp) %>% 
+    ggplot(aes(factor(ce), factor(temperature), fill = peak_max)) +
+    geom_tile() +
+    scale_fill_viridis_c(option = "C") +
+    labs(
+      title = paste("Optimization Heatmap:", cmp),
+      x = "Collision Energy (eV)",
+      y = "Temperature (C)",
+      fill = "log10 Max Intensity"
+    ) +
+    theme_minimal() +
+    theme(
+      strip.text = element_text(size = 10, face = "bold"),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "bottom",
+      legend.text = element_text(size = 9),
+      plot.title = element_text(size = 16, face = "bold"),
+      plot.subtitle = element_text(size = 12)
+    ) +
+    facet_wrap(~transition, scales = "free") 
+
+  print(p_heat)
+  cat("\n\n")
+}
+
+# 4. End Tabset Panel
+cat(":::\n")
+```
