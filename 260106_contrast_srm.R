@@ -1,4 +1,4 @@
-# Contrast example ----
+# Contrast GC MRMs ----
 
 ## packages and functions ----
 
@@ -53,6 +53,8 @@ ms_metadataer(ms_data)
 
 ## Visualization ----
 
+# compound by compound
+
 sample_spectrums %>%
   filter(compound_name == "Bis(2-ethylhexyl)hexanedioate") %>%
   ggplot(aes(rtime, intensity, color = sample_name)) +
@@ -77,3 +79,44 @@ sample_spectrums %>%
     color = guide_legend(override.aes = list(alpha = 1, linewidth = 2))
   ) +
   facet_wrap(~transition)
+
+# Simple GUI w shiny
+
+source("r/srm_shiny_beta.R")
+
+shinyApp(ui, server)
+
+# Optimization heatmap
+
+heatmap_data <- sample_spectrums %>%
+  group_by(compound_name, transition, ce, temperature) %>%
+  summarise(peak_max = log10(max(intensity, na.rm = TRUE)), .groups = "drop")
+
+unique_compounds <- unique(heatmap_data$compound_name)
+
+# 3. Loop through each compound and print a plot
+for (cmp in unique_compounds) {
+  p <- heatmap_data %>%
+    filter(compound_name == cmp) %>% # Filter for the current compound
+    ggplot(aes(factor(ce), factor(temperature), fill = peak_max)) +
+    geom_tile() +
+    scale_fill_viridis_c(option = "C") +
+    labs(
+      title = paste(cmp), # Dynamic title with compound name
+      x = "Collision Energy (eV)",
+      y = "Temperature (C)",
+      fill = "log10 Max Intensity"
+    ) +
+    theme_minimal() +
+    theme(
+      strip.text = element_text(size = 10, face = "bold"),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "bottom",
+      legend.text = element_text(size = 9),
+      plot.title = element_text(size = 16, face = "bold"),
+      plot.subtitle = element_text(size = 12)
+    ) +
+    facet_wrap(~transition, scales = "free") # Facet only by transition
+
+  print(p)
+}
